@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Tinnitus Relief Sound Therapy</title>
+    <link rel="manifest" href="./manifest.json">
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            text-align: center; 
+            padding: 10px;
+            max-width: 500px;
+            margin: auto;
+        }
+        input, button, select { 
+            margin: 5px; 
+            padding: 15px; 
+            width: 100%;
+            font-size: 1em;
+        }
+        #frequencyTester { width: 100%; }
+    </style>
+</head>
+<body>
+    <h1>Mobile Tinnitus Relief Therapy</h1>
+    
+    <p><strong>Match Your Tinnitus Frequency</strong></p>
+    <input type="range" id="frequencyTester" min="100" max="12000" step="10" value="8000" oninput="updateFrequency()">
+    <label id="frequencyLabel">8000 Hz</label>
+    <button onclick="toggleFrequencyPlay()">Play/Stop Frequency</button>
+    
+    <hr>
+
+    <p><strong>Enter Matched Frequency (Hz) for Therapy</strong></p>
+    <input type="number" id="tinnitusFrequency" placeholder="e.g., 8000" min="20" max="20000" />
+
+    <p><strong>Select Noise Type</strong></p>
+    <select id="noiseType">
+        <option value="white">White Noise</option>
+        <option value="pink">Pink Noise</option>
+    </select>
+    
+    <p><strong>Session Duration (minutes)</strong></p>
+    <input type="number" id="sessionDuration" placeholder="e.g., 10" min="1" max="120" />
+
+    <button onclick="startTherapy()">Start Therapy</button>
+    <button onclick="stopTherapy()">Stop Therapy</button>
+
+    <script>
+        let audioContext, noiseSource, notchedFilter, gainNode, modulator, stopTimeout;
+        let frequencyOscillator;
+        let isPlayingFrequency = false;
+
+        function updateFrequency() {
+            const frequency = document.getElementById("frequencyTester").value;
+            document.getElementById("frequencyLabel").innerText = `${frequency} Hz`;
+            
+            if (frequencyOscillator) {
+                frequencyOscillator.frequency.value = frequency;
+            }
+        }
+
+        function toggleFrequencyPlay() {
+            if (!isPlayingFrequency) {
+                playFrequency();
+            } else {
+                stopFrequency();
+            }
+        }
+
+        function playFrequency() {
+            const frequency = parseFloat(document.getElementById("frequencyTester").value);
+
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            frequencyOscillator = audioContext.createOscillator();
+            frequencyOscillator.type = 'sine';
+            frequencyOscillator.frequency.value = frequency;
+            frequencyOscillator.connect(audioContext.destination);
+            frequencyOscillator.start();
+
+            isPlayingFrequency = true;
+        }
+
+        function stopFrequency() {
+            if (frequencyOscillator) {
+                frequencyOscillator.stop();
+                frequencyOscillator.disconnect();
+                frequencyOscillator = null;
+            }
+            isPlayingFrequency = false;
+        }
+
+        function startTherapy() {
+            const tinnitusFrequency = parseFloat(document.getElementById("tinnitusFrequency").value);
+            const noiseType = document.getElementById("noiseType").value;
+            const sessionDuration = parseFloat(document.getElementById("sessionDuration").value) || 0;
+
+            if (!tinnitusFrequency || tinnitusFrequency < 20 || tinnitusFrequency > 20000) {
+                alert("Please enter a valid frequency between 20 and 20000 Hz.");
+                return;
+            }
+
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            noiseSource = audioContext.createBufferSource();
+            const bufferSize = audioContext.sampleRate * 5;
+            const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            const data = buffer.getChannelData(0);
+
+            if (noiseType === "white") {
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+            } else if (noiseType === "pink") {
+                let b0, b1, b2, b3, b4, b5, b6;
+                b0 = b1 = b2 = b3 = b4 = b5 = b6 = 0.0;
+                for (let i = 0; i < bufferSize; i++) {
+                    const white = Math.random() * 2 - 1;
+                    b0 = 0.99886 * b0 + white * 0.0555179;
+                    b1 = 0.99332 * b1 + white * 0.0750759;
+                    b2 = 0.96900 * b2 + white * 0.1538520;
+                    b3 = 0.86650 * b3 + white * 0.3104856;
+                    b4 = 0.55000 * b4 + white * 0.5329522;
+                    b5 = -0.7616 * b5 - white * 0.0168980;
+                    data[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+                    data[i] *= 0.11;
+                    b6 = white * 0.115926;
+                }
+            }
+
+            noiseSource.buffer = buffer;
+            noiseSource.loop = true;
+
+            notchedFilter = audioContext.createBiquadFilter();
+            notchedFilter.type = "notch";
+            notchedFilter.frequency.value = tinnitusFrequency;
+            notchedFilter.Q.value = 10;
+
+            gainNode = audioContext.createGain();
+            gainNode.gain.value = 0.5;
+
+            modulator = audioContext.createOscillator();
+            modulator.frequency.value = 0.25;
+            const modulationGain = audioContext.createGain();
+            modulationGain.gain.value = 0.2;
+            modulator.connect(modulationGain);
+            modulationGain.connect(gainNode.gain);
+            modulator.start();
+
+            noiseSource.connect(notchedFilter).connect(gainNode).connect(audioContext.destination);
+            noiseSource.start();
+
+            if (sessionDuration > 0) {
+                stopTimeout = setTimeout(stopTherapy, sessionDuration * 60 * 1000);
+            }
+        }
+
+        function stopTherapy() {
+            if (noiseSource) {
+                noiseSource.stop();
+                noiseSource.disconnect();
+            }
+            if (notchedFilter) {
+                notchedFilter.disconnect();
+            }
+            if (gainNode) {
+                gainNode.disconnect();
+            }
+            if (modulator) {
+                modulator.stop();
+                modulator.disconnect();
+            }
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+            if (stopTimeout) {
+                clearTimeout(stopTimeout);
+            }
+        }
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./service-worker.js')
+                .then(reg => console.log('Service worker registered:', reg))
+                .catch(err => console.log('Service worker registration failed:', err));
+        }
+    </script>
+</body>
+</html>
